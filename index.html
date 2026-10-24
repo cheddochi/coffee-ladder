@@ -100,6 +100,12 @@ svg .slot-q.gone{opacity:0}
 svg .token{stroke:var(--panel);stroke-width:3}
 svg .name-bg.active{animation:pulse .7s ease-in-out infinite alternate}
 svg .spark{pointer-events:none}
+svg .aim{fill:none;stroke:var(--ok);stroke-width:3;stroke-dasharray:6 4;transition:opacity .2s;pointer-events:none}
+svg .aim.hot{stroke:var(--hit);animation:aimhot .35s ease-in-out infinite alternate}
+@keyframes aimhot{to{stroke-width:6}}
+svg .shout{font:700 14px var(--body);text-anchor:middle;fill:var(--ok);stroke:var(--panel);stroke-width:4;paint-order:stroke;pointer-events:none;animation:shout 1.2s ease-out forwards}
+svg .shout.hot{fill:var(--hit);font-size:16px}
+@keyframes shout{0%{opacity:0;transform:translateY(6px)}15%{opacity:1;transform:none}70%{opacity:1}100%{opacity:0;transform:translateY(-14px)}}
 @keyframes slotpop{0%{transform:scale(.2)}100%{transform:scale(1)}}
 @keyframes pulse{to{stroke-width:5}}
 .shake{animation:shake .5s}
@@ -223,7 +229,7 @@ svg#ladder{overflow:visible}
 
 <script>
 (function(){
-const APP_VERSION = "1.6"; // 1.0 기본 · 1.2 결과 이미지 · 1.3 다이나믹 결과 공개 · 1.4 GitHub Pages 공유 시트 · 1.5 당첨 폭탄 효과 · 1.6 불규칙 사다리, 2연속 당첨자 휴식
+const APP_VERSION = "1.7"; // 1.0 기본 · 1.2 결과 이미지 · 1.3 다이나믹 결과 공개 · 1.4 GitHub Pages 공유 시트 · 1.5 당첨 폭탄 효과 · 1.6 불규칙 사다리, 2연속 당첨자 휴식 · 1.7 막판 역전 연출
 const $ = id => document.getElementById(id);
 const state = { members: [], selected: new Set(), loseN: 1, memo: "", history: [] };
 let db = null, game = null, editing = false;
@@ -343,23 +349,43 @@ function buildGame(){
   const players = shuffle(playing());
   const N = players.length, K = Math.min(state.loseN, N-1);
   const ROWS = Math.max(10, Math.min(18, N*2+3));
-  // keep rerolling until the ladder actually scrambles people; who pays is still
-  // decided only by the independent slot shuffle below, so this doesn't bias anyone
+  const slots = shuffle(Array.from({length:N},(_,i)=>i<K)); // true = 당첨
+  // try a batch of ladders and keep the most dramatic one: paths that keep
+  // swinging between a 당첨 slot and a safe one, with the last swing near the
+  // bottom. Players were shuffled onto columns independently of this choice,
+  // so everyone still has exactly K/N odds.
   const maxStay = N<3 ? N : Math.floor((N-1)/3);
-  let g = null;
-  for(let k=0;k<60;k++){
-    const cand = { N, ROWS, rungs: makeRungs(N, ROWS, k<40) };
+  let best = null, bestScore = -1;
+  for(let k=0, valid=0; k<90 && valid<30; k++){
+    const cand = { N, ROWS, slots, rungs: makeRungs(N, ROWS, k<60) };
     const ends = [...Array(N).keys()].map(i=>tracePath(cand,i));
     if(ends.some(e=>!e)) continue;
     if(new Set(ends.map(e=>e.end)).size!==N) continue;
-    g = cand;
-    if(ends.filter((e,i)=>e.end===i).length<=maxStay) break;
+    valid++;
+    const score = ends.reduce((sum,e)=>sum + drama(cand,e), 0)
+      - 6*Math.max(0, ends.filter((e,i)=>e.end===i).length - maxStay);
+    if(score>bestScore){ best = cand; bestScore = score; }
   }
-  if(!g) g = { N, ROWS, rungs: makeRungs(N, ROWS, false) };
-  const slots = shuffle(Array.from({length:N},(_,i)=>i<K)); // true = 당첨
-  return { players, N, K, ROWS, rungs:g.rungs, slots, traced:new Set(), memo:$("memo").value.trim(), at:new Date(), saved:false };
+  const rungs = best ? best.rungs : makeRungs(N, ROWS, false);
+  return { players, N, K, ROWS, rungs, slots, traced:new Set(), memo:$("memo").value.trim(), at:new Date(), saved:false };
 }
-const rf = Math.random; // only shapes the drawing; who pays comes from the crypto slot shuffle
+// rung crossings where the slot straight below the walker switches between
+// 당첨 and 통과; depth is 0 at the top of the ladder and 1 at the bottom
+function swings(g, pts){
+  const out = [];
+  for(let k=1; k+1<pts.length; k+=2){
+    const from = pts[k][0], to = pts[k+1][0];
+    if(g.slots[from]!==g.slots[to]) out.push({ k:k+1, hit:g.slots[to], depth:pts[k+1][1]/(g.ROWS+1) });
+  }
+  return out;
+}
+function drama(g, e){
+  const sw = swings(g, e.pts).filter(s=>s.depth>0.35);
+  if(!sw.length) return 0;
+  const last = sw[sw.length-1].depth;
+  return Math.min(sw.length,5) + (last>0.75 ? 3 : 0) + (g.slots[e.end] ? 2*sw.length : 0);
+}
+const rf = Math.random, ri = n => Math.floor(rf()*n); // only shape the drawing; who pays comes from the crypto slot shuffle
 // rungs sit at uneven heights, some slanted and some pairs crowded while others
 // are sparse, so the ladder doesn't read as a tidy grid you can trace by eye.
 // y runs 0 (top) .. ROWS+1 (bottom); y1 is on rail c, y2 on rail c+1
@@ -372,9 +398,9 @@ function makeRungs(N, ROWS, tilt){
   for(let tries=0; tries<5000; tries++){
     const open = count.map((n,c)=>n<target[c]?c:-1).filter(c=>c>=0);
     if(!open.length) break;
-    const c = open[rand(open.length)];
-    const y1 = lo + rf()*(hi-lo);
-    const y2 = tilt && rand(100)<45 ? y1 + (rf()*2-1)*1.4 : y1;
+    const c = open[ri(open.length)];
+    const y1 = lo + (hi-lo)*(ri(100)<45 ? 0.55+0.45*rf() : rf());
+    const y2 = tilt && ri(100)<45 ? y1 + (rf()*2-1)*1.4 : y1;
     if(!free(c,y1) || !free(c+1,y2)) continue;
     // rungs on the same pair must not cross each other
     if(rungs.some(r=>r.c===c && Math.sign(r.y1-y1)!==Math.sign(r.y2-y2))) continue;
@@ -462,23 +488,56 @@ function animatePath(i, tempo){
     const bg = g["bg"+i]; bg.setAttribute("stroke",col); bg.classList.add("done","active");
     const len = path.getTotalLength();
     [glow,path].forEach(p=>{ p.style.strokeDasharray=len; p.style.strokeDashoffset=len; });
+    // on suspense runs, call out every time the walker swings onto or off a 당첨 line
+    const live = tempo==="slow";
+    const at = [0]; for(let k=1;k<pts.length;k++) at.push(at[k-1] + Math.hypot(X(pts[k][0])-X(pts[k-1][0]), Y(pts[k][1])-Y(pts[k-1][1])));
+    const sw = live ? swings(g, pts).filter(s=>s.depth>0.3) : [];
+    sw.forEach((s,n)=>{ s.at = at[s.k]; s.last = n===sw.length-1; });
+    if(live) aim(pts[0][0]);
     const speed = tempo==="slow" ? 0.22 : tempo==="fast" ? 0.6 : 0.32; // px per ms
-    const dur = REDUCE ? 1 : len/speed;
-    const ease = t => tempo==="slow" ? (t<.7 ? t/.7*.82 : .82 + (1-Math.pow(1-(t-.7)/.3,2))*.18) : t;
-    let t0=null, lastTurn=-1;
+    let last=null, L=0, next=0, slowTo=0, lastTurn=-1, flips=0;
     function frame(now){
-      if(t0===null) t0=now;
-      const t = Math.min(1,(now-t0)/dur), L = ease(t)*len;
+      const dt = last===null ? 0 : Math.min(50, now-last); last = now;
+      let v = speed;
+      if(tempo==="slow" && L>len*0.7) v *= 0.55;     // creep over the last stretch
+      if(L<slowTo) v *= 0.3;                         // slow-mo right after a swing
+      L = REDUCE ? len : Math.min(len, L + v*dt);
       [glow,path].forEach(p=>p.style.strokeDashoffset = len-L);
       const pt = path.getPointAtLength(L);
       token.setAttribute("cx",pt.x); token.setAttribute("cy",pt.y);
       const row = Math.floor((pt.y-g.geo.top)/g.geo.rowH);
       if(row!==lastTurn){ lastTurn=row; keepInView(pt.x); if(tempo==="slow") buzz(8); }
-      if(t<1) requestAnimationFrame(frame);
-      else { bg.classList.remove("active"); token.setAttribute("r",7); res(end); }
+      while(next<sw.length && L>=sw[next].at){
+        const s = sw[next++]; flips++;
+        aim(pts[s.k][0]);
+        const late = s.depth>0.75;
+        shout(pt.x, pt.y, s.hit ? (late&&s.last ? "막판 역전! ☕" : "☕ 당첨 라인!") : (late&&s.last ? "막판 탈출!" : "휴~ 비껴감"), s.hit);
+        $("ladder-hint").textContent = `${g.players[i]} · 운명이 ${flips}번 뒤집혔어요`;
+        slowTo = L + (late ? 70 : 35);
+        buzz(s.hit ? [40,30,40] : 20);
+      }
+      if(L<len) requestAnimationFrame(frame);
+      else { bg.classList.remove("active"); token.setAttribute("r",7); aim(-1); res(end); }
     }
     requestAnimationFrame(frame);
   });
+}
+// a frame around the slot the walker is currently headed for
+function aim(c){
+  const g = game;
+  if(!g.aimEl){ g.aimEl = document.createElementNS(NS,"rect"); g.aimEl.setAttribute("class","aim"); g.fx.appendChild(g.aimEl); }
+  if(c<0){ g.aimEl.style.opacity = 0; return; }
+  const {X,Y,colW} = g.geo, w = Math.min(colW-2, 58);
+  g.aimEl.setAttribute("x", X(c)-w/2); g.aimEl.setAttribute("y", Y(g.ROWS+1)+5);
+  g.aimEl.setAttribute("width", w); g.aimEl.setAttribute("height", 40); g.aimEl.setAttribute("rx", 9);
+  g.aimEl.classList.toggle("hot", !!g.slots[c]); g.aimEl.style.opacity = 1;
+}
+function shout(x, y, text, hot){
+  const t = document.createElementNS(NS,"text");
+  const W = game.geo.colW*game.N;
+  t.setAttribute("class","shout"+(hot?" hot":"")); t.setAttribute("x",Math.min(Math.max(x,58),W-58)); t.setAttribute("y",y-16);
+  t.textContent = text; game.fx.appendChild(t);
+  setTimeout(()=>t.remove(), 1200);
 }
 async function openSlot(c, name){
   const g = game, s = g.slotEls[c], {X} = g.geo, y = g.geo.Y(g.ROWS+1)+24;
@@ -587,7 +646,8 @@ async function runOne(i){
   if(busy || game.traced.has(i)) return;
   busy=true; game.traced.add(i);
   const remainingHits = game.slots.filter((h,c)=>h && !openedSlot(c)).length;
-  const end = await animatePath(i, remainingHits ? "slow" : "normal");
+  const settled = remainingHits===0 || remainingHits===game.N-game.traced.size+1;
+  const end = await animatePath(i, settled ? "normal" : "slow");
   await openSlot(end, game.players[i]);
   busy=false;
   if(!game.slots[end]) toast(`${game.players[i]} → 통과`);
@@ -618,7 +678,7 @@ async function revealAll(){
       verdict(remainingPlayers===hitsLeft ? "확정" : "두구두구", `${game.players[i]}의 운명은…`, true);
       await wait(1400);
     }
-    const end = await animatePath(i, hitsLeft ? "slow" : "fast");
+    const end = await animatePath(i, !hitsLeft ? "fast" : remainingPlayers===hitsLeft ? "normal" : "slow");
     await openSlot(end, game.players[i]);
     await wait(game.slots[end] ? 1900 : 600);
   }

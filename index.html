@@ -1,0 +1,751 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1d2421">
+<title>물류원 커피 사다리</title>
+<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
+</head>
+<body>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=IBM+Plex+Sans+KR:wght@400;500;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+/* Layout: one narrow column of "dock" panels, the result printed as a shipping waybill */
+:root{
+  --bg:#eef0ec; --panel:#ffffff; --ink:#1d2421; --muted:#5f6a64; --line:#d3d8d2;
+  --accent:#e2591b; --accent-ink:#ffffff; --kraft:#c9a46b; --kraft-soft:#f3e9d6;
+  --hit:#c8361a; --ok:#2f7a55; --rail:#7d8a83;
+  --display:"Black Han Sans","Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --body:"IBM Plex Sans KR","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#141917; --panel:#1d2421; --ink:#e9ece8; --muted:#9aa59f; --line:#323b37;
+  --accent:#f0732f; --accent-ink:#1a0d05; --kraft:#b8955d; --kraft-soft:#2b261c;
+  --hit:#ff6a48; --ok:#5cc28e; --rail:#6f7c75; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#141917; --panel:#1d2421; --ink:#e9ece8; --muted:#9aa59f; --line:#323b37;
+  --accent:#f0732f; --accent-ink:#1a0d05; --kraft:#b8955d; --kraft-soft:#2b261c;
+  --hit:#ff6a48; --ok:#5cc28e; --rail:#6f7c75; color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.5;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 48px}
+.wrap{max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+header{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;padding-bottom:4px}
+h1{font-family:var(--display);font-weight:400;font-size:30px;line-height:1.05;margin:0;letter-spacing:.5px;text-wrap:balance}
+h1 small{display:block;font-family:var(--mono);font-size:11px;letter-spacing:.14em;color:var(--muted);margin-bottom:6px;text-transform:uppercase}
+.stamp{font-family:var(--mono);font-size:12px;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:12px}
+.ph{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.ph h2{margin:0;font-size:15px;font-weight:700}
+.ph .meta{font-family:var(--mono);font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.tag{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;color:var(--muted);text-transform:uppercase}
+
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{appearance:none;border:1.5px solid var(--line);background:transparent;color:var(--muted);font:500 14px var(--body);
+  padding:8px 12px;border-radius:999px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;min-height:40px}
+.chip[aria-pressed="true"]{border-color:var(--ink);background:var(--ink);color:var(--panel)}
+.chip .x{display:none;font-family:var(--mono);font-size:13px;line-height:1}
+.editing .chip{border-style:dashed;color:var(--ink);background:transparent}
+.editing .chip .x{display:inline;color:var(--hit)}
+.empty{color:var(--muted);font-size:14px;padding:6px 0}
+
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+input[type=text]{flex:1 1 160px;min-width:0;font:16px var(--body);padding:10px 12px;border:1.5px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink)}
+input[type=text]:focus{outline:none;border-color:var(--accent)}
+button{font-family:var(--body)}
+.btn{appearance:none;border:1.5px solid var(--line);background:var(--panel);color:var(--ink);font-weight:500;font-size:14px;padding:10px 14px;border-radius:8px;cursor:pointer;min-height:42px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:700}
+.btn.big{width:100%;font-size:17px;padding:14px;min-height:52px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.link{border:none;background:none;color:var(--muted);padding:6px 4px;min-height:auto;font-size:13px;text-decoration:underline;text-underline-offset:3px}
+:focus-visible{outline:2.5px solid var(--accent);outline-offset:2px}
+
+.stepper{display:flex;align-items:center;gap:0;border:1.5px solid var(--line);border-radius:8px;overflow:hidden}
+.stepper button{appearance:none;border:none;background:transparent;color:var(--ink);width:48px;height:46px;font-size:22px;cursor:pointer}
+.stepper button:disabled{opacity:.3}
+.stepper output{min-width:64px;text-align:center;font-family:var(--mono);font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}
+.count-row{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.count-row .lbl{font-weight:500}
+.count-row .lbl span{display:block;font-size:12.5px;color:var(--muted);font-weight:400}
+
+.ladder-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin-inline:-4px}
+svg#ladder{display:block;margin:0 auto;touch-action:manipulation}
+svg .rail{stroke:var(--rail);stroke-width:3;stroke-linecap:round}
+svg .rung{stroke:var(--rail);stroke-width:3;stroke-linecap:round}
+svg .name{fill:var(--ink);font:600 13px var(--body);text-anchor:middle;cursor:pointer}
+svg .name-bg{fill:var(--bg);stroke:var(--line);stroke-width:1.5;cursor:pointer}
+svg .name-bg.done{stroke-width:2.5}
+svg .slot{font:600 12.5px var(--body);text-anchor:middle}
+svg .slot.hit{fill:var(--hit)} svg .slot.pass{fill:var(--muted)}
+svg .cover{fill:var(--kraft);transition:opacity .4s}
+svg .cover-txt{fill:#3b2a10;font:600 11px var(--mono);letter-spacing:.12em;text-anchor:middle}
+svg .trace{fill:none;stroke-width:5;stroke-linecap:round;stroke-linejoin:round}
+svg .trace-glow{fill:none;stroke-width:14;stroke-linecap:round;stroke-linejoin:round;opacity:.22}
+svg .slot{opacity:0;transform-box:fill-box;transform-origin:center}
+svg .slot.open{opacity:1;animation:slotpop .55s cubic-bezier(.2,1.6,.4,1)}
+svg .slot-cover{fill:var(--kraft);transform-box:fill-box;transform-origin:center;transition:transform .35s ease-in,opacity .35s}
+svg .slot-cover.gone{transform:scaleY(0);opacity:0}
+svg .slot-q{fill:#3b2a10;font:600 15px var(--mono);text-anchor:middle;transition:opacity .2s}
+svg .slot-q.gone{opacity:0}
+svg .token{stroke:var(--panel);stroke-width:3}
+svg .name-bg.active{animation:pulse .7s ease-in-out infinite alternate}
+svg .spark{pointer-events:none}
+@keyframes slotpop{0%{transform:scale(.2)}100%{transform:scale(1)}}
+@keyframes pulse{to{stroke-width:5}}
+.shake{animation:shake .5s}
+.boom{animation:boom .7s cubic-bezier(.3,.6,.3,1)}
+@keyframes boom{10%{transform:translate(-12px,6px) rotate(-1deg)}25%{transform:translate(10px,-8px) rotate(1deg)}40%{transform:translate(-8px,4px)}55%{transform:translate(6px,-3px)}75%{transform:translate(-3px,1px)}100%{transform:none}}
+.flash{position:fixed;inset:0;z-index:25;pointer-events:none;background:radial-gradient(circle at 50% 60%,#fff8d6 0%,#ffb021 35%,rgba(226,89,27,0) 75%);animation:flash .65s ease-out forwards}
+@keyframes flash{0%{opacity:0}12%{opacity:.95}100%{opacity:0}}
+svg#ladder{overflow:visible}
+@keyframes shake{20%{transform:translateX(-7px)}40%{transform:translateX(6px)}60%{transform:translateX(-4px)}80%{transform:translateX(2px)}}
+.verdict{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:30;padding:max(16px,env(safe-area-inset-left,0px))}
+.verdict div{background:var(--hit);color:#fff;font-family:var(--display);font-size:clamp(34px,11vw,64px);line-height:1.1;padding:18px 26px;border-radius:14px;text-align:center;box-shadow:0 18px 50px rgba(0,0,0,.35);animation:verdict 1.6s cubic-bezier(.2,1.4,.4,1) forwards;word-break:keep-all}
+.verdict div small{display:block;font-family:var(--mono);font-size:14px;letter-spacing:.16em;opacity:.85;margin-bottom:6px}
+.verdict.tease div{background:var(--ink);color:var(--panel);animation-duration:1.3s}
+@keyframes verdict{0%{transform:scale(.3) rotate(-8deg);opacity:0}18%{transform:scale(1.08) rotate(2deg);opacity:1}30%{transform:scale(1) rotate(0)}82%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(.92)}}
+.stamp{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+.ver{font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.06em;color:var(--accent);border:1.5px solid var(--accent);border-radius:999px;padding:2px 9px;line-height:1.4}
+.hint{font-size:13px;color:var(--muted);text-align:center;margin:0}
+
+/* waybill */
+.waybill{background:var(--kraft-soft);border:1.5px solid var(--kraft);border-radius:10px;padding:0;overflow:hidden}
+.wb-top{display:flex;justify-content:space-between;gap:8px;padding:12px 16px;border-bottom:1.5px dashed var(--kraft);font-family:var(--mono);font-size:11.5px;letter-spacing:.08em;color:var(--muted);flex-wrap:wrap}
+.wb-main{padding:16px;display:flex;flex-direction:column;gap:10px}
+.wb-label{font-family:var(--mono);font-size:11px;letter-spacing:.14em;color:var(--muted);text-transform:uppercase}
+.wb-losers{font-family:var(--display);font-size:38px;line-height:1.1;color:var(--hit);text-wrap:balance;word-break:keep-all}
+.wb-pass{font-size:14px;color:var(--ink)}
+.wb-memo{font-size:14px;color:var(--muted)}
+.barcode{height:34px;background:repeating-linear-gradient(90deg,var(--ink) 0 2px,transparent 2px 4px,var(--ink) 4px 5px,transparent 5px 8px,var(--ink) 8px 11px,transparent 11px 12px);opacity:.75;border-radius:2px}
+.result-img{display:block;width:100%;max-width:100%;aspect-ratio:4/5;border-radius:8px;border:1px solid var(--kraft);background:var(--bg)}
+.share-box{width:100%;min-height:120px;font:13px/1.5 var(--mono);border:1.5px solid var(--line);border-radius:8px;padding:10px;background:var(--bg);color:var(--ink);resize:vertical}
+
+.hist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.hist li{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;padding:10px 0;border-top:1px solid var(--line);font-size:14px}
+.hist li:first-child{border-top:none}
+.hist time{font-family:var(--mono);font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;padding-top:2px}
+.hist b{color:var(--hit)}
+.hist .sub{grid-column:2;font-size:12.5px;color:var(--muted)}
+
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%) translateY(20px);background:var(--ink);color:var(--panel);padding:12px 16px;border-radius:8px;font-size:14px;opacity:0;pointer-events:none;transition:.25s;max-width:calc(100% - 32px);text-align:center;z-index:20}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.sync{font-size:12px;color:var(--muted)}
+@media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1><small>Logistics Grad · Coffee Dispatch</small>커피 사다리</h1>
+    <div class="stamp"><span class="ver" id="ver" title="프로그램 버전"></span><span id="today"></span></div>
+  </header>
+
+  <section class="panel" id="members-panel">
+    <div class="ph">
+      <h2>오늘 참여하는 사람</h2>
+      <span class="meta" id="sel-meta">0 / 0명</span>
+    </div>
+    <div class="chips" id="chips"></div>
+    <div class="row" id="add-row">
+      <input type="text" id="new-name" placeholder="멤버 이름 추가 (쉼표로 여러 명)" autocomplete="off" enterkeyhint="done">
+      <button class="btn" id="add-btn">추가</button>
+    </div>
+    <div class="row" style="justify-content:space-between">
+      <div class="row" style="gap:2px">
+        <button class="btn link" id="all-btn">전체 선택</button>
+        <button class="btn link" id="none-btn">전체 해제</button>
+      </div>
+      <button class="btn link" id="edit-btn">멤버 편집</button>
+    </div>
+    <div class="sync" id="sync"></div>
+  </section>
+
+  <section class="panel">
+    <div class="count-row">
+      <div class="lbl">걸리는 사람 수<span id="count-sub">참여자를 2명 이상 골라주세요</span></div>
+      <div class="stepper">
+        <button id="minus" aria-label="한 명 줄이기">−</button>
+        <output id="lose-n">1명</output>
+        <button id="plus" aria-label="한 명 늘리기">+</button>
+      </div>
+    </div>
+    <input type="text" id="memo" placeholder="내기 메모 (선택) 예: 아메리카노 6잔, 수업 끝나고" autocomplete="off">
+    <button class="btn primary big" id="make-btn" disabled>사다리 만들기</button>
+  </section>
+
+  <section class="panel" id="ladder-panel" hidden>
+    <div class="ph">
+      <h2>사다리</h2>
+      <span class="meta" id="ladder-meta"></span>
+    </div>
+    <div class="ladder-scroll"><svg id="ladder" role="img" aria-label="사다리 게임"></svg></div>
+    <p class="hint" id="ladder-hint">이름을 누르면 한 명씩 내려갑니다</p>
+    <div class="row">
+      <button class="btn primary" id="reveal-btn" style="flex:1">전체 결과 공개</button>
+      <button class="btn" id="reshuffle-btn">다시 섞기</button>
+    </div>
+  </section>
+
+  <section class="waybill" id="result" hidden>
+    <div class="wb-top"><span id="wb-no">NO. —</span><span id="wb-time"></span></div>
+    <div class="wb-main">
+      <div class="wb-label">커피 담당 · Consignee</div>
+      <div class="wb-losers" id="wb-losers"></div>
+      <div class="wb-pass" id="wb-pass"></div>
+      <div class="wb-memo" id="wb-memo"></div>
+      <div class="barcode" aria-hidden="true"></div>
+      <div class="wb-label">카톡 공유용 이미지</div>
+      <img class="result-img" id="result-img" alt="사다리 결과 이미지">
+      <button class="btn primary big" id="img-btn">결과 이미지 저장 · 공유</button>
+      <p class="hint" style="text-align:left" id="img-hint">저장한 이미지를 카카오톡 단톡방에서 사진으로 보내세요. 버튼이 안 되면 위 이미지를 길게 눌러 저장할 수 있어요.</p>
+      <button class="btn big" id="copy-btn">결과 글 복사</button>
+      <p class="hint" style="text-align:left">복사한 뒤 카카오톡 단톡방 입력창을 길게 눌러 붙여넣기 하세요. 복사가 안 되면 아래 글을 직접 선택해 복사하면 됩니다.</p>
+      <textarea class="share-box" id="share-text" readonly></textarea>
+    </div>
+  </section>
+
+  <section class="panel" id="hist-panel" hidden>
+    <div class="ph"><h2>최근 기록</h2><span class="meta" id="hist-meta"></span></div>
+    <ul class="hist" id="hist"></ul>
+  </section>
+</div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+(function(){
+const APP_VERSION = "1.5"; // 1.0 기본 · 1.2 결과 이미지 · 1.3 다이나믹 결과 공개 · 1.4 GitHub Pages 공유 시트 · 1.5 당첨 폭탄 효과
+const $ = id => document.getElementById(id);
+const state = { members: [], selected: new Set(), loseN: 1, memo: "", history: [] };
+let db = null, game = null, editing = false;
+
+/* ---------- storage: db when available, localStorage fallback ---------- */
+const LS = "coffee-ladder-v1";
+function lsLoad(){ try{ return JSON.parse(localStorage.getItem(LS)||"null"); }catch(e){ return null; } }
+function lsSave(){ try{ localStorage.setItem(LS, JSON.stringify(snapshot())); }catch(e){} }
+function snapshot(){ return { names: state.members, selected:[...state.selected], loseN: state.loseN, history: state.history.slice(0,15) }; }
+function apply(d){
+  if(!d) return;
+  if(Array.isArray(d.names)) state.members = d.names.filter(n=>typeof n==="string").slice(0,60);
+  if(Array.isArray(d.selected)) state.selected = new Set(d.selected.filter(n=>state.members.includes(n)));
+  if(Number.isInteger(d.loseN)) state.loseN = d.loseN;
+  if(Array.isArray(d.history)) state.history = d.history.slice(0,15);
+}
+let saveTimer = null;
+function save(){
+  lsSave();
+  if(!db) return;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(()=>{
+    db.doc("settings/main").set(snapshot()).then(()=>setSync("저장됨 · 다른 기기에서도 같은 멤버가 보여요"))
+      .catch(()=>setSync("이 기기에만 저장됨"));
+  }, 400);
+}
+function setSync(t){ $("sync").textContent = t; }
+
+apply(lsLoad());
+render();
+if(window.claude && claude.use){
+  claude.use("db").then(async d=>{
+    if(!d){ setSync("이 기기에만 저장됨"); return; }
+    db = d;
+    try{
+      const s = await db.doc("settings/main").get();
+      if(s.exists){ apply(s.data()); render(); setSync("저장됨 · 다른 기기에서도 같은 멤버가 보여요"); }
+      else if(state.members.length){ save(); }
+    }catch(e){ setSync("이 기기에만 저장됨"); }
+  });
+} else setSync("이 기기에만 저장됨");
+
+/* ---------- members ---------- */
+function render(){
+  const box = $("chips"); box.innerHTML = "";
+  box.parentElement.classList.toggle("editing", editing);
+  if(!state.members.length){
+    const p = document.createElement("div"); p.className="empty";
+    p.textContent = "아직 등록된 멤버가 없어요. 아래에 동기들 이름을 한 번만 넣어두면 다음부터는 고르기만 하면 됩니다.";
+    box.appendChild(p);
+  }
+  state.members.forEach(name=>{
+    const b = document.createElement("button");
+    b.className="chip"; b.type="button";
+    b.setAttribute("aria-pressed", state.selected.has(name) && !editing ? "true":"false");
+    const t = document.createElement("span"); t.textContent = name; b.appendChild(t);
+    const x = document.createElement("span"); x.className="x"; x.textContent="✕"; b.appendChild(x);
+    b.addEventListener("click", ()=>{
+      if(editing){
+        state.members = state.members.filter(n=>n!==name); state.selected.delete(name);
+      } else {
+        state.selected.has(name) ? state.selected.delete(name) : state.selected.add(name);
+      }
+      save(); render();
+    });
+    box.appendChild(b);
+  });
+  $("edit-btn").textContent = editing ? "편집 완료" : "멤버 편집";
+  $("edit-btn").hidden = !state.members.length && !editing;
+  const n = state.selected.size;
+  $("sel-meta").textContent = `${n} / ${state.members.length}명`;
+  const max = Math.max(1, n-1);
+  state.loseN = Math.min(Math.max(1, state.loseN), max);
+  $("lose-n").textContent = state.loseN + "명";
+  $("minus").disabled = state.loseN<=1;
+  $("plus").disabled = state.loseN>=max;
+  $("count-sub").textContent = n>=2 ? `참여 ${n}명 중 ${state.loseN}명이 커피를 삽니다` : "참여자를 2명 이상 골라주세요";
+  $("make-btn").disabled = n<2;
+  renderHistory();
+}
+function addNames(){
+  const raw = $("new-name").value;
+  const names = raw.split(/[,，\n]/).map(s=>s.trim()).filter(Boolean).map(s=>s.slice(0,12));
+  let added = 0;
+  names.forEach(n=>{ if(!state.members.includes(n)){ state.members.push(n); state.selected.add(n); added++; } });
+  $("new-name").value = "";
+  if(added){ save(); render(); toast(`${added}명 추가했어요`); }
+  else if(names.length) toast("이미 있는 이름이에요");
+}
+$("add-btn").addEventListener("click", addNames);
+$("new-name").addEventListener("keydown", e=>{ if(e.key==="Enter" && !e.isComposing){ e.preventDefault(); addNames(); } });
+$("all-btn").addEventListener("click", ()=>{ state.selected = new Set(state.members); save(); render(); });
+$("none-btn").addEventListener("click", ()=>{ state.selected.clear(); save(); render(); });
+$("edit-btn").addEventListener("click", ()=>{ editing=!editing; render(); });
+$("minus").addEventListener("click", ()=>{ state.loseN--; save(); render(); });
+$("plus").addEventListener("click", ()=>{ state.loseN++; save(); render(); });
+
+/* ---------- ladder ---------- */
+function rand(n){ const a=new Uint32Array(1); crypto.getRandomValues(a); return a[0]%n; }
+function shuffle(arr){ const a=arr.slice(); for(let i=a.length-1;i>0;i--){ const j=rand(i+1); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+
+function buildGame(){
+  const players = shuffle(state.members.filter(n=>state.selected.has(n)));
+  const N = players.length, K = Math.min(state.loseN, N-1);
+  const ROWS = Math.max(8, Math.min(16, N*2+2));
+  const rungs = []; // rungs[r] = set of left column indexes with a rung to the right
+  for(let r=0;r<ROWS;r++){
+    const set = new Set();
+    for(let c=0;c<N-1;c++){ if(!set.has(c-1) && rand(100)<45) set.add(c); }
+    rungs.push(set);
+  }
+  // make sure every adjacent pair is connected at least once so paths really mix
+  for(let c=0;c<N-1;c++){
+    if(!rungs.some(s=>s.has(c))){
+      for(const r of shuffle([...Array(ROWS).keys()])){ const s=rungs[r]; if(!s.has(c-1)&&!s.has(c+1)){ s.add(c); break; } }
+    }
+  }
+  const slots = shuffle(Array.from({length:N},(_,i)=>i<K)); // true = 당첨
+  return { players, N, K, ROWS, rungs, slots, traced:new Set(), memo:$("memo").value.trim(), at:new Date(), saved:false };
+}
+function tracePath(g, start){
+  let c = start; const pts = [[c,-1]];
+  for(let r=0;r<g.ROWS;r++){
+    pts.push([c,r]);
+    if(g.rungs[r].has(c)){ c=c+1; pts.push([c,r]); }
+    else if(g.rungs[r].has(c-1)){ c=c-1; pts.push([c,r]); }
+  }
+  pts.push([c,g.ROWS]);
+  return { end:c, pts };
+}
+const COLORS = ["#e2591b","#2f7ab8","#2f9a63","#9a4fc4","#c4932a","#d23d6b","#178a8f","#6d6ad8","#a7643a","#4d8a2a"];
+
+function drawLadder(){
+  const g = game, svg = $("ladder");
+  const avail = Math.max(280, svg.parentElement.clientWidth);
+  const colW = Math.max(56, Math.floor(avail / g.N));
+  const W = colW*g.N, top=52, rowH=26, H = top + (g.ROWS+1)*rowH + 54;
+  const X = c => colW*c + colW/2, Y = r => r<0 ? top : top + (r+1)*rowH;
+  g.geo = {X,Y,top,rowH,H,colW};
+  svg.setAttribute("viewBox",`0 0 ${W} ${H}`); svg.setAttribute("width",W); svg.setAttribute("height",H);
+  const NS="http://www.w3.org/2000/svg"; svg.innerHTML="";
+  const el=(t,a,p=svg)=>{ const e=document.createElementNS(NS,t); for(const k in a) e.setAttribute(k,a[k]); p.appendChild(e); return e; };
+  const bottom = Y(g.ROWS);
+  for(let c=0;c<g.N;c++) el("line",{class:"rail",x1:X(c),y1:top,x2:X(c),y2:bottom});
+  g.rungs.forEach((s,r)=>s.forEach(c=>el("line",{class:"rung",x1:X(c),y1:Y(r),x2:X(c+1),y2:Y(r)})));
+  g.traceLayer = el("g",{});
+  g.players.forEach((name,i)=>{
+    const grp = el("g",{tabindex:"0",role:"button","aria-label":name+" 사다리 타기"});
+    const w = Math.min(colW-6, 52);
+    g["bg"+i] = el("rect",{class:"name-bg",x:X(i)-w/2,y:6,width:w,height:34,rx:8},grp);
+    const t = el("text",{class:"name",x:X(i),y:28},grp); t.textContent = name.length>5? name.slice(0,5)+"…" : name;
+    const go=()=>runOne(i);
+    grp.addEventListener("click",go);
+    grp.addEventListener("keydown",e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); go(); } });
+  });
+  g.slotEls = g.slots.map((hit,c)=>{
+    const t = el("text",{class:"slot "+(hit?"hit":"pass"),x:X(c),y:bottom+31}); t.textContent = hit?"☕ 당첨":"통과";
+    const w = Math.min(colW-8, 50);
+    const cov = el("rect",{class:"slot-cover",x:X(c)-w/2,y:bottom+10,width:w,height:30,rx:6});
+    const q = el("text",{class:"slot-q",x:X(c),y:bottom+31}); q.textContent="?";
+    return {t,cov,q};
+  });
+  g.fx = el("g",{});
+  $("ladder-meta").textContent = `${g.N}명 · 당첨 ${g.K}명`;
+  $("ladder-hint").textContent = "이름을 누르면 한 명씩 내려갑니다";
+}
+const NS="http://www.w3.org/2000/svg";
+const REDUCE = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const wait = ms => new Promise(r=>setTimeout(r, REDUCE?0:ms));
+function buzz(p){ try{ navigator.vibrate && navigator.vibrate(p); }catch(e){} }
+function keepInView(x){
+  const sc = $("ladder").parentElement; if(sc.scrollWidth<=sc.clientWidth) return;
+  const want = x - sc.clientWidth/2;
+  if(Math.abs(sc.scrollLeft-want) > sc.clientWidth*0.3) sc.scrollLeft = want;
+}
+// tempo: "fast" for the warm-up runs, "slow" for the suspense run; the token
+// crawls down the rails and slows to a creep over the last rows
+function animatePath(i, tempo){
+  return new Promise(res=>{
+    const g = game, {X,Y} = g.geo, {pts,end} = tracePath(g,i);
+    const d = pts.map((p,k)=>(k?"L":"M")+X(p[0])+" "+Y(p[1])).join(" ");
+    const col = COLORS[i%COLORS.length];
+    const mk=(t,a)=>{ const e=document.createElementNS(NS,t); for(const k in a) e.setAttribute(k,a[k]); return e; };
+    const glow = mk("path",{d,class:"trace-glow",stroke:col});
+    const path = mk("path",{d,class:"trace",stroke:col});
+    const token = mk("circle",{r:9,class:"token",fill:col});
+    g.traceLayer.append(glow,path,token);
+    const bg = g["bg"+i]; bg.setAttribute("stroke",col); bg.classList.add("done","active");
+    const len = path.getTotalLength();
+    [glow,path].forEach(p=>{ p.style.strokeDasharray=len; p.style.strokeDashoffset=len; });
+    const speed = tempo==="slow" ? 0.22 : tempo==="fast" ? 0.6 : 0.32; // px per ms
+    const dur = REDUCE ? 1 : len/speed;
+    const ease = t => tempo==="slow" ? (t<.7 ? t/.7*.82 : .82 + (1-Math.pow(1-(t-.7)/.3,2))*.18) : t;
+    let t0=null, lastTurn=-1;
+    function frame(now){
+      if(t0===null) t0=now;
+      const t = Math.min(1,(now-t0)/dur), L = ease(t)*len;
+      [glow,path].forEach(p=>p.style.strokeDashoffset = len-L);
+      const pt = path.getPointAtLength(L);
+      token.setAttribute("cx",pt.x); token.setAttribute("cy",pt.y);
+      const row = Math.floor((pt.y-g.geo.top)/g.geo.rowH);
+      if(row!==lastTurn){ lastTurn=row; keepInView(pt.x); if(tempo==="slow") buzz(8); }
+      if(t<1) requestAnimationFrame(frame);
+      else { bg.classList.remove("active"); token.setAttribute("r",7); res(end); }
+    }
+    requestAnimationFrame(frame);
+  });
+}
+async function openSlot(c, name){
+  const g = game, s = g.slotEls[c], {X} = g.geo, y = g.geo.Y(g.ROWS)+24;
+  const reveal = ()=>{ s.cov.classList.add("gone"); s.q.classList.add("gone"); s.t.classList.add("open"); };
+  if(!g.slots[c]){ reveal(); buzz(15); return; }
+  // a bomb drops onto the slot, the fuse burns down, then it goes off
+  await dropBomb(X(c), y);
+  reveal();
+  explode(X(c), y);
+  buzz([180,60,260]);
+  verdict("💥 당첨 · 커피 담당", name);
+  await wait(400);
+}
+function dropBomb(x, y){
+  if(REDUCE) return Promise.resolve();
+  return new Promise(res=>{
+    const grp = document.createElementNS(NS,"g"); game.fx.appendChild(grp);
+    grp.innerHTML = `<g class="bomb-body"><circle r="17" fill="#1b1f1d"/><circle r="17" fill="none" stroke="#555" stroke-width="2"/>
+      <circle cx="-6" cy="-6" r="5" fill="#fff" opacity=".35"/><rect x="-6" y="-24" width="12" height="8" rx="2" fill="#3a3f3c"/>
+      <path d="M0 -24 q8 -12 18 -10" fill="none" stroke="#c9a46b" stroke-width="3" stroke-linecap="round" class="fuse"/></g>
+      <circle class="fuse-spark" r="5" fill="#ffd23a"/>`;
+    const fuse = grp.querySelector(".fuse"), spark = grp.querySelector(".fuse-spark");
+    const flen = fuse.getTotalLength(); fuse.style.strokeDasharray = flen;
+    const fall = 380, burn = 950; let t0=null, ticked=0;
+    function frame(now){
+      if(t0===null) t0=now;
+      const t = now-t0;
+      const fy = t<fall ? -120 + 120*Math.pow(t/fall,2) : Math.sin((t-fall)/40)*1.5;
+      const sq = t<fall ? 1 : 1 + 0.06*Math.sin((t-fall)/22);
+      grp.setAttribute("transform",`translate(${x + (t>fall?Math.sin(t/17)*1.2:0)},${y-8+fy}) scale(${sq})`);
+      const b = Math.min(1, Math.max(0,(t-fall)/burn));
+      fuse.style.strokeDashoffset = flen*b;
+      const p = fuse.getPointAtLength(flen*(1-b));
+      spark.setAttribute("cx",p.x); spark.setAttribute("cy",p.y);
+      spark.setAttribute("r", 4 + Math.random()*4);
+      spark.setAttribute("fill", Math.random()<.5 ? "#ffd23a" : "#ff7a1a");
+      if(t>fall && Math.floor((t-fall)/240)>ticked){ ticked++; buzz(12); }
+      if(t < fall+burn) requestAnimationFrame(frame); else { grp.remove(); res(); }
+    }
+    requestAnimationFrame(frame);
+  });
+}
+function explode(x, y){
+  const f = document.createElement("div"); f.className = "flash"; document.body.appendChild(f);
+  setTimeout(()=>f.remove(), 700);
+  const w = document.querySelector(".wrap"); w.classList.remove("boom"); void w.offsetWidth; w.classList.add("boom");
+  if(REDUCE) return;
+  const mk=(t,a)=>{ const e=document.createElementNS(NS,t); for(const k in a) e.setAttribute(k,a[k]); game.fx.appendChild(e); return e; };
+  // fireball + two shockwave rings
+  const ball = mk("circle",{cx:x,cy:y,r:4,fill:"#ffb021"});
+  const ring1 = mk("circle",{cx:x,cy:y,r:4,fill:"none",stroke:"#ff7a1a","stroke-width":8});
+  const ring2 = mk("circle",{cx:x,cy:y,r:4,fill:"none",stroke:"#ffd23a","stroke-width":4});
+  let t0=null;
+  (function grow(now){
+    if(t0===null) t0=now; const t=(now-t0)/650;
+    const e = 1-Math.pow(1-Math.min(t,1),3);
+    ball.setAttribute("r", 6+e*46); ball.setAttribute("opacity", Math.max(0,1-t*1.4));
+    ball.setAttribute("fill", t<.25 ? "#fff3c4" : "#ff8a1a");
+    ring1.setAttribute("r", 8+e*110); ring1.setAttribute("opacity", Math.max(0,1-t)); ring1.setAttribute("stroke-width", 8*(1-e)+1);
+    ring2.setAttribute("r", 4+Math.min(1,t*1.3)*160); ring2.setAttribute("opacity", Math.max(0,.9-t));
+    if(t<1) requestAnimationFrame(grow); else { ball.remove(); ring1.remove(); ring2.remove(); }
+  })(performance.now());
+  // debris, embers and smoke puffs
+  const cols = ["#ff7a1a","#ffd23a","#c8361a","#1b1f1d","#c9a46b"];
+  for(let k=0;k<46;k++){
+    const smoke = k>=36;
+    const c = mk("circle",{class:"spark",r: smoke ? 10+rand(10) : 2+rand(5), fill: smoke ? "#8a8f8c" : cols[k%cols.length]});
+    const a = Math.PI*2*Math.random(), v = smoke ? .6+Math.random() : 3+Math.random()*6;
+    let px=x, py=y, vx=Math.cos(a)*v, vy=Math.sin(a)*v-(smoke?1.2:3.5), life=0, max = smoke?80:60;
+    (function step(){
+      px+=vx; py+=vy; vy+= smoke ? -0.02 : 0.2; vx*=0.985; life++;
+      c.setAttribute("cx",px); c.setAttribute("cy",py);
+      c.setAttribute("opacity", Math.max(0,(smoke?.55:1)*(1-life/max)));
+      if(smoke) c.setAttribute("r", 10+life*0.35);
+      if(life<max) requestAnimationFrame(step); else c.remove();
+    })();
+  }
+  burst(x, y);
+}
+function burst(x, y){
+  if(REDUCE) return;
+  const cols = ["#e2591b","#c9a46b","#c8361a","#2f9a63","#2f7ab8"];
+  for(let k=0;k<22;k++){
+    const c = document.createElementNS(NS,"circle");
+    c.setAttribute("class","spark"); c.setAttribute("r", 3+rand(4)); c.setAttribute("fill", cols[k%cols.length]);
+    game.fx.appendChild(c);
+    const a = Math.PI*2*k/22 + rand(30)/100, v = 1.8+rand(30)/10;
+    let px=x, py=y, vx=Math.cos(a)*v, vy=Math.sin(a)*v-2.2, life=0;
+    (function step(){
+      px+=vx; py+=vy; vy+=0.12; life++;
+      c.setAttribute("cx",px); c.setAttribute("cy",py); c.setAttribute("opacity", Math.max(0,1-life/55));
+      if(life<55) requestAnimationFrame(step); else c.remove();
+    })();
+  }
+}
+function verdict(label, text, tease){
+  const v = document.createElement("div"); v.className = "verdict"+(tease?" tease":"");
+  const box = document.createElement("div");
+  const s = document.createElement("small"); s.textContent = label; box.appendChild(s);
+  box.appendChild(document.createTextNode(text));
+  v.appendChild(box); document.body.appendChild(v);
+  setTimeout(()=>v.remove(), tease?1300:1650);
+}
+let busy=false;
+async function runOne(i){
+  if(busy || game.traced.has(i)) return;
+  busy=true; game.traced.add(i);
+  const remainingHits = game.slots.filter((h,c)=>h && !openedSlot(c)).length;
+  const end = await animatePath(i, remainingHits ? "slow" : "normal");
+  await openSlot(end, game.players[i]);
+  busy=false;
+  if(!game.slots[end]) toast(`${game.players[i]} → 통과`);
+  if(game.traced.size===game.N){ await wait(1500); finish(); }
+}
+function openedSlot(c){ return game.slotEls[c].t.classList.contains("open"); }
+function resultOf(i){ return game.slots[tracePath(game,i).end]; }
+// most passers run first and fast; the final stretch mixes the people who pay
+// with a few lucky ones, each run slowly after a drum-roll tease
+async function revealAll(){
+  if(busy) return; busy=true;
+  $("reveal-btn").disabled=true; $("reshuffle-btn").disabled=true;
+  const left = shuffle([...Array(game.N).keys()].filter(i=>!game.traced.has(i)));
+  const hits = left.filter(i=>resultOf(i)), passes = left.filter(i=>!resultOf(i));
+  const decoys = Math.min(passes.length, Math.max(1, hits.length));
+  const head = passes.slice(decoys), tail = shuffle(hits.concat(passes.slice(0,decoys)));
+  for(const i of head){
+    game.traced.add(i);
+    await openSlot(await animatePath(i,"fast"), game.players[i]);
+    await wait(220);
+  }
+  for(const i of tail){
+    const remainingPlayers = game.N - game.traced.size;
+    const hitsLeft = game.slots.filter((h,c)=>h && !openedSlot(c)).length;
+    game.traced.add(i);
+    $("ladder-hint").textContent = `남은 ${remainingPlayers}명 중 ${hitsLeft}명이 커피를 삽니다…`;
+    if(hitsLeft){
+      verdict(remainingPlayers===hitsLeft ? "확정" : "두구두구", `${game.players[i]}의 운명은…`, true);
+      await wait(1400);
+    }
+    const end = await animatePath(i, hitsLeft ? "slow" : "fast");
+    await openSlot(end, game.players[i]);
+    await wait(game.slots[end] ? 1900 : 600);
+  }
+  busy=false; $("reshuffle-btn").disabled=false; finish();
+}
+function fmt(d){ const p=n=>String(n).padStart(2,"0"); return `${d.getFullYear()}.${p(d.getMonth()+1)}.${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; }
+function finish(){
+  const g = game;
+  const losers = g.players.filter((_,i)=>resultOf(i));
+  const passers = g.players.filter((_,i)=>!resultOf(i));
+  $("reveal-btn").disabled=true;
+  $("ladder-hint").textContent = "결과가 나왔어요. 아래에서 카톡으로 공유하세요";
+  const no = "CF-" + fmt(g.at).replace(/[^0-9]/g,"").slice(2,10) + "-" + String(rand(900)+100);
+  $("wb-no").textContent = "NO. " + no;
+  $("wb-time").textContent = fmt(g.at);
+  $("wb-losers").textContent = losers.join(", ");
+  $("wb-pass").textContent = "통과: " + passers.join(", ");
+  $("wb-memo").textContent = g.memo ? "메모: " + g.memo : "";
+  $("wb-memo").hidden = !g.memo;
+  const lines = [
+    "☕ 커피 사다리 결과",
+    fmt(g.at) + " · 참여 " + g.N + "명 · 당첨 " + g.K + "명",
+    "",
+    "🎯 당첨: " + losers.join(", "),
+    "🙌 통과: " + passers.join(", ")
+  ];
+  if(g.memo) lines.push("", "📝 " + g.memo);
+  lines.push("", "잘 마시겠습니다 🙏");
+  $("share-text").value = lines.join("\n");
+  makeImage(g, losers, passers, no);
+  $("result").hidden=false;
+  setTimeout(()=>$("result").scrollIntoView({behavior:"smooth",block:"start"}),200);
+  if(!g.saved){
+    g.saved=true;
+    state.history.unshift({ at:g.at.toISOString(), losers, n:g.N, memo:g.memo });
+    state.history = state.history.slice(0,15);
+    save(); renderHistory();
+  }
+}
+function renderHistory(){
+  const h = state.history; $("hist-panel").hidden = !h.length;
+  $("hist-meta").textContent = h.length ? `최근 ${h.length}회` : "";
+  const ul=$("hist"); ul.innerHTML="";
+  h.forEach(r=>{
+    const li=document.createElement("li");
+    const t=document.createElement("time"); t.textContent = fmt(new Date(r.at)).slice(5); li.appendChild(t);
+    const d=document.createElement("div"); const b=document.createElement("b"); b.textContent=(r.losers||[]).join(", ");
+    d.appendChild(b); d.appendChild(document.createTextNode(` · ${r.n}명 중`)); li.appendChild(d);
+    if(r.memo){ const s=document.createElement("div"); s.className="sub"; s.textContent=r.memo; li.appendChild(s); }
+    ul.appendChild(li);
+  });
+}
+function start(){
+  if(busy) return;
+  game = buildGame();
+  $("ladder-panel").hidden=false; $("result").hidden=true; $("reveal-btn").disabled=false;
+  drawLadder();
+  $("ladder-panel").scrollIntoView({behavior:"smooth",block:"start"});
+}
+$("make-btn").addEventListener("click", start);
+$("reshuffle-btn").addEventListener("click", start);
+$("reveal-btn").addEventListener("click", revealAll);
+$("copy-btn").addEventListener("click", ()=>{
+  const txt=$("share-text").value;
+  const fallback=()=>{ const ta=$("share-text"); ta.focus(); ta.select(); toast("글이 선택됐어요. 복사를 눌러주세요"); };
+  try{
+    navigator.clipboard.writeText(txt).then(()=>toast("복사했어요. 카톡 단톡방에 붙여넣기 하세요")).catch(fallback);
+  }catch(e){ fallback(); }
+});
+/* ---------- result image (1080×1350, fixed palette so it reads the same in KakaoTalk) ---------- */
+let downloads = null, imgBlob = null, imgName = "";
+if(window.claude && claude.use) claude.use("downloads").then(d=>{ downloads = d; });
+function wrapText(ctx, text, maxW){
+  const out=[]; let line="";
+  for(const ch of text){
+    if(ctx.measureText(line+ch).width > maxW && line){ out.push(line); line = ch.trim()? ch : ""; }
+    else line += ch;
+  }
+  if(line) out.push(line);
+  return out;
+}
+async function makeImage(g, losers, passers, no){
+  imgBlob = null; $("img-btn").disabled = true;
+  try{ await Promise.all([
+    document.fonts.load('80px "Black Han Sans"'),
+    document.fonts.load('500 34px "IBM Plex Sans KR"'),
+    document.fonts.load('700 34px "IBM Plex Sans KR"'),
+    document.fonts.load('600 26px "IBM Plex Mono"')]); }catch(e){}
+  const W=1080, H=1350, P=72;
+  const cv=document.createElement("canvas"); cv.width=W; cv.height=H;
+  const c=cv.getContext("2d");
+  const DISP='"Black Han Sans","Apple SD Gothic Neo","Malgun Gothic",sans-serif';
+  const BODY='"IBM Plex Sans KR","Apple SD Gothic Neo","Malgun Gothic",sans-serif';
+  const MONO='"IBM Plex Mono",ui-monospace,Menlo,monospace';
+  // ground + kraft waybill
+  c.fillStyle="#eef0ec"; c.fillRect(0,0,W,H);
+  const cx=48, cy=48, cw=W-96, ch=H-96;
+  c.fillStyle="#f3e9d6"; c.strokeStyle="#c9a46b"; c.lineWidth=4;
+  c.beginPath(); c.roundRect(cx,cy,cw,ch,28); c.fill(); c.stroke();
+  // header band
+  c.fillStyle="#1d2421"; c.beginPath(); c.roundRect(cx,cy,cw,170,[28,28,0,0]); c.fill();
+  c.fillStyle="#c9a46b"; c.font=`600 24px ${MONO}`; c.textBaseline="alphabetic";
+  c.fillText("LOGISTICS GRAD · COFFEE DISPATCH", P+8, cy+62);
+  c.fillStyle="#ffffff"; c.font=`76px ${DISP}`; c.fillText("커피 사다리 결과", P+8, cy+140);
+  // meta row
+  let y = cy+170+64;
+  c.fillStyle="#5f6a64"; c.font=`600 26px ${MONO}`;
+  c.fillText("NO. "+no, P+8, y);
+  c.textAlign="right"; c.fillText(fmt(g.at), W-P-8, y); c.textAlign="left";
+  y += 30;
+  c.setLineDash([14,10]); c.strokeStyle="#c9a46b"; c.lineWidth=3;
+  c.beginPath(); c.moveTo(cx,y); c.lineTo(cx+cw,y); c.stroke(); c.setLineDash([]);
+  // losers
+  y += 76;
+  c.fillStyle="#5f6a64"; c.font=`600 26px ${MONO}`; c.fillText("☕ 커피 담당 · CONSIGNEE", P+8, y);
+  const maxW = W-2*P-16;
+  let size = losers.length<=1 ? 150 : losers.length<=3 ? 110 : 84;
+  c.font=`${size}px ${DISP}`;
+  let lines = wrapText(c, losers.join(", "), maxW-240);
+  while(lines.length>3 && size>56){ size-=8; c.font=`${size}px ${DISP}`; lines=wrapText(c, losers.join(", "), maxW-240); }
+  c.fillStyle="#c8361a";
+  lines.slice(0,4).forEach(l=>{ y += size*1.12; c.fillText(l, P+8, y); });
+  // stamp
+  c.save(); c.translate(W-P-120, cy+170+250); c.rotate(-0.22);
+  c.strokeStyle="rgba(200,54,26,.85)"; c.lineWidth=7; c.beginPath(); c.arc(0,0,92,0,Math.PI*2); c.stroke();
+  c.lineWidth=3; c.beginPath(); c.arc(0,0,78,0,Math.PI*2); c.stroke();
+  c.fillStyle="rgba(200,54,26,.9)"; c.font=`44px ${DISP}`; c.textAlign="center"; c.fillText("당첨",0,10);
+  c.font=`600 18px ${MONO}`; c.fillText(`${g.K} / ${g.N}`,0,44); c.restore(); c.textAlign="left";
+  // passers
+  y += 90;
+  c.fillStyle="#5f6a64"; c.font=`600 26px ${MONO}`; c.fillText("🙌 통과 · CLEARED", P+8, y);
+  c.fillStyle="#1d2421"; c.font=`500 38px ${BODY}`;
+  wrapText(c, passers.join(", "), maxW).slice(0,4).forEach(l=>{ y+=56; c.fillText(l, P+8, y); });
+  // memo
+  if(g.memo){
+    y += 72;
+    c.fillStyle="#5f6a64"; c.font=`600 26px ${MONO}`; c.fillText("📝 메모 · NOTE", P+8, y);
+    c.fillStyle="#1d2421"; c.font=`500 34px ${BODY}`;
+    wrapText(c, g.memo, maxW).slice(0,2).forEach(l=>{ y+=50; c.fillText(l, P+8, y); });
+  }
+  // footer: barcode + summary
+  const by = cy+ch-170;
+  c.setLineDash([14,10]); c.strokeStyle="#c9a46b"; c.lineWidth=3;
+  c.beginPath(); c.moveTo(cx,by-40); c.lineTo(cx+cw,by-40); c.stroke(); c.setLineDash([]);
+  c.fillStyle="#1d2421";
+  let bx=P+8; const seed=[...no].map(ch=>ch.charCodeAt(0));
+  for(let i=0; bx<W-P-300; i++){ const w=1+((seed[i%seed.length]+i*7)%4); if(i%2===0) c.fillRect(bx,by,w*3,90); bx+=w*3+3; }
+  c.font=`600 22px ${MONO}`; c.fillText(no, P+8, by+124);
+  c.textAlign="right"; c.font=`700 34px ${BODY}`; c.fillText(`참여 ${g.N}명`, W-P-8, by+40);
+  c.fillStyle="#c8361a"; c.fillText(`당첨 ${g.K}명`, W-P-8, by+88);
+  c.fillStyle="#5f6a64"; c.font=`500 26px ${BODY}`; c.fillText("잘 마시겠습니다 🙏", W-P-8, by+124);
+  c.textAlign="left";
+  $("result-img").src = cv.toDataURL("image/png");
+  imgName = `커피사다리_${fmt(g.at).replace(/[^0-9]/g,"").slice(0,12)}.png`;
+  cv.toBlob(b=>{ imgBlob=b; $("img-btn").disabled=false; }, "image/png");
+}
+$("img-btn").addEventListener("click", async ()=>{
+  if(!imgBlob) return;
+  if(!downloads){
+    // outside claude.ai (e.g. GitHub Pages) the phone's share sheet can send the image straight to KakaoTalk
+    const file = new File([imgBlob], imgName, {type:"image/png"});
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      try{ await navigator.share({files:[file], text:$("share-text").value}); }
+      catch(e){ if(e && e.name!=="AbortError") toast("위 이미지를 길게 눌러 저장해 주세요"); }
+    } else toast("위 이미지를 길게 눌러 저장해 주세요");
+    return;
+  }
+  try{
+    await downloads.save({ filename: imgName, data: imgBlob });
+    toast("저장했어요. 카톡에서 사진으로 보내세요");
+  }catch(e){
+    if(e && e.code==="declined") return;
+    if(e && e.code==="rate_limited"){ toast("잠시 후 다시 눌러주세요"); return; }
+    toast("여기서는 저장 버튼을 쓸 수 없어요. 이미지를 길게 눌러 저장해 주세요");
+  }
+});
+
+let tt; function toast(m){ const t=$("toast"); t.textContent=m; t.classList.add("show"); clearTimeout(tt); tt=setTimeout(()=>t.classList.remove("show"),2200); }
+$("today").textContent = fmt(new Date()).slice(0,10);
+$("ver").textContent = "v" + APP_VERSION;
+})();
+</script>
+</body>
+</html>

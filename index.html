@@ -52,6 +52,10 @@ h1 small{display:block;font-family:var(--mono);font-size:11px;letter-spacing:.14
 .chip .x{display:none;font-family:var(--mono);font-size:13px;line-height:1}
 .editing .chip{border-style:dashed;color:var(--ink);background:transparent}
 .editing .chip .x{display:inline;color:var(--hit)}
+.chip.bench{opacity:.6;cursor:not-allowed;border-style:dashed}
+.chip.bench span:first-child{text-decoration:line-through;text-decoration-color:var(--hit)}
+.chip .rest{font:600 11px var(--mono);color:var(--hit)}
+.bench-note{font-size:13px;color:var(--hit);background:color-mix(in srgb,var(--hit) 9%,transparent);border-radius:8px;padding:8px 10px}
 .empty{color:var(--muted);font-size:14px;padding:6px 0}
 
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
@@ -76,7 +80,8 @@ button{font-family:var(--body)}
 .ladder-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin-inline:-4px}
 svg#ladder{display:block;margin:0 auto;touch-action:manipulation}
 svg .rail{stroke:var(--rail);stroke-width:3;stroke-linecap:round}
-svg .rung{stroke:var(--rail);stroke-width:3;stroke-linecap:round}
+svg .rung{stroke:var(--rail);stroke-width:3;stroke-linecap:round;animation:rungin .3s ease-out both}
+@keyframes rungin{from{opacity:0;stroke-width:9;stroke:var(--accent)}}
 svg .name{fill:var(--ink);font:600 13px var(--body);text-anchor:middle;cursor:pointer}
 svg .name-bg{fill:var(--bg);stroke:var(--line);stroke-width:1.5;cursor:pointer}
 svg .name-bg.done{stroke-width:2.5}
@@ -161,6 +166,7 @@ svg#ladder{overflow:visible}
       </div>
       <button class="btn link" id="edit-btn">멤버 편집</button>
     </div>
+    <div class="bench-note" id="bench-note" hidden></div>
     <div class="sync" id="sync"></div>
   </section>
 
@@ -217,7 +223,7 @@ svg#ladder{overflow:visible}
 
 <script>
 (function(){
-const APP_VERSION = "1.5"; // 1.0 기본 · 1.2 결과 이미지 · 1.3 다이나믹 결과 공개 · 1.4 GitHub Pages 공유 시트 · 1.5 당첨 폭탄 효과
+const APP_VERSION = "1.6"; // 1.0 기본 · 1.2 결과 이미지 · 1.3 다이나믹 결과 공개 · 1.4 GitHub Pages 공유 시트 · 1.5 당첨 폭탄 효과 · 1.6 불규칙 사다리, 2연속 당첨자 휴식
 const $ = id => document.getElementById(id);
 const state = { members: [], selected: new Set(), loseN: 1, memo: "", history: [] };
 let db = null, game = null, editing = false;
@@ -261,7 +267,16 @@ if(window.claude && claude.use){
 } else setSync("이 기기에만 저장됨");
 
 /* ---------- members ---------- */
+// anyone who paid in both of the last two rounds sits this one out; their
+// selection is kept, so they're back automatically once a round passes without them
+function benched(){
+  const [a,b] = state.history;
+  if(!a || !b) return new Set();
+  return new Set((a.losers||[]).filter(n=>(b.losers||[]).includes(n) && state.members.includes(n)));
+}
+function playing(){ const off = benched(); return state.members.filter(n=>state.selected.has(n) && !off.has(n)); }
 function render(){
+  const off = benched();
   const box = $("chips"); box.innerHTML = "";
   box.parentElement.classList.toggle("editing", editing);
   if(!state.members.length){
@@ -271,9 +286,12 @@ function render(){
   }
   state.members.forEach(name=>{
     const b = document.createElement("button");
-    b.className="chip"; b.type="button";
-    b.setAttribute("aria-pressed", state.selected.has(name) && !editing ? "true":"false");
+    const rest = off.has(name) && !editing;
+    b.className = "chip" + (rest ? " bench" : ""); b.type="button";
+    b.setAttribute("aria-pressed", state.selected.has(name) && !rest && !editing ? "true":"false");
+    if(rest){ b.disabled = true; b.title = "최근 2번 연속 당첨이라 이번 판은 쉬어요"; }
     const t = document.createElement("span"); t.textContent = name; b.appendChild(t);
+    if(rest){ const r = document.createElement("span"); r.className="rest"; r.textContent="2연속 · 휴식"; b.appendChild(r); }
     const x = document.createElement("span"); x.className="x"; x.textContent="✕"; b.appendChild(x);
     b.addEventListener("click", ()=>{
       if(editing){
@@ -287,8 +305,10 @@ function render(){
   });
   $("edit-btn").textContent = editing ? "편집 완료" : "멤버 편집";
   $("edit-btn").hidden = !state.members.length && !editing;
-  const n = state.selected.size;
+  const n = playing().length;
   $("sel-meta").textContent = `${n} / ${state.members.length}명`;
+  $("bench-note").hidden = !off.size;
+  $("bench-note").textContent = off.size ? `☕ ${[...off].join(", ")}: 최근 2번 연속 당첨이라 이번 판은 빠져요` : "";
   const max = Math.max(1, n-1);
   state.loseN = Math.min(Math.max(1, state.loseN), max);
   $("lose-n").textContent = state.loseN + "명";
@@ -320,34 +340,64 @@ function rand(n){ const a=new Uint32Array(1); crypto.getRandomValues(a); return 
 function shuffle(arr){ const a=arr.slice(); for(let i=a.length-1;i>0;i--){ const j=rand(i+1); [a[i],a[j]]=[a[j],a[i]]; } return a; }
 
 function buildGame(){
-  const players = shuffle(state.members.filter(n=>state.selected.has(n)));
+  const players = shuffle(playing());
   const N = players.length, K = Math.min(state.loseN, N-1);
-  const ROWS = Math.max(8, Math.min(16, N*2+2));
-  const rungs = []; // rungs[r] = set of left column indexes with a rung to the right
-  for(let r=0;r<ROWS;r++){
-    const set = new Set();
-    for(let c=0;c<N-1;c++){ if(!set.has(c-1) && rand(100)<45) set.add(c); }
-    rungs.push(set);
+  const ROWS = Math.max(10, Math.min(18, N*2+3));
+  // keep rerolling until the ladder actually scrambles people; who pays is still
+  // decided only by the independent slot shuffle below, so this doesn't bias anyone
+  const maxStay = N<3 ? N : Math.floor((N-1)/3);
+  let g = null;
+  for(let k=0;k<60;k++){
+    const cand = { N, ROWS, rungs: makeRungs(N, ROWS, k<40) };
+    const ends = [...Array(N).keys()].map(i=>tracePath(cand,i));
+    if(ends.some(e=>!e)) continue;
+    if(new Set(ends.map(e=>e.end)).size!==N) continue;
+    g = cand;
+    if(ends.filter((e,i)=>e.end===i).length<=maxStay) break;
   }
-  // make sure every adjacent pair is connected at least once so paths really mix
-  for(let c=0;c<N-1;c++){
-    if(!rungs.some(s=>s.has(c))){
-      for(const r of shuffle([...Array(ROWS).keys()])){ const s=rungs[r]; if(!s.has(c-1)&&!s.has(c+1)){ s.add(c); break; } }
-    }
-  }
+  if(!g) g = { N, ROWS, rungs: makeRungs(N, ROWS, false) };
   const slots = shuffle(Array.from({length:N},(_,i)=>i<K)); // true = 당첨
-  return { players, N, K, ROWS, rungs, slots, traced:new Set(), memo:$("memo").value.trim(), at:new Date(), saved:false };
+  return { players, N, K, ROWS, rungs:g.rungs, slots, traced:new Set(), memo:$("memo").value.trim(), at:new Date(), saved:false };
 }
-function tracePath(g, start){
-  let c = start; const pts = [[c,-1]];
-  for(let r=0;r<g.ROWS;r++){
-    pts.push([c,r]);
-    if(g.rungs[r].has(c)){ c=c+1; pts.push([c,r]); }
-    else if(g.rungs[r].has(c-1)){ c=c-1; pts.push([c,r]); }
+const rf = Math.random; // only shapes the drawing; who pays comes from the crypto slot shuffle
+// rungs sit at uneven heights, some slanted and some pairs crowded while others
+// are sparse, so the ladder doesn't read as a tidy grid you can trace by eye.
+// y runs 0 (top) .. ROWS+1 (bottom); y1 is on rail c, y2 on rail c+1
+function makeRungs(N, ROWS, tilt){
+  const GAP = 0.6, lo = 0.8, hi = ROWS+0.2;
+  const rungs = [], ends = Array.from({length:N},()=>[]);
+  const free = (rail,y)=> y>=lo && y<=hi && ends[rail].every(v=>Math.abs(v-y)>=GAP);
+  const target = Array.from({length:N-1},()=> Math.max(2, Math.round(ROWS*(0.3+rf()*0.4))));
+  const count = Array(N-1).fill(0);
+  for(let tries=0; tries<5000; tries++){
+    const open = count.map((n,c)=>n<target[c]?c:-1).filter(c=>c>=0);
+    if(!open.length) break;
+    const c = open[rand(open.length)];
+    const y1 = lo + rf()*(hi-lo);
+    const y2 = tilt && rand(100)<45 ? y1 + (rf()*2-1)*1.4 : y1;
+    if(!free(c,y1) || !free(c+1,y2)) continue;
+    // rungs on the same pair must not cross each other
+    if(rungs.some(r=>r.c===c && Math.sign(r.y1-y1)!==Math.sign(r.y2-y2))) continue;
+    rungs.push({c,y1,y2}); ends[c].push(y1); ends[c+1].push(y2); count[c]++;
   }
-  pts.push([c,g.ROWS]);
-  return { end:c, pts };
+  return rungs;
 }
+// walk down the rail, take the next rung end below us, cross to its other end;
+// slanted rungs can lift the walker back up, so give up (null) if it loops
+function tracePath(g, start){
+  let c = start, y = 0; const pts = [[c,0]];
+  for(let step=0; step<=g.rungs.length; step++){
+    let best = null;
+    for(const r of g.rungs){
+      if(r.c===c && r.y1>y && (!best || r.y1<best.y)) best = {y:r.y1, to:c+1, ty:r.y2};
+      if(r.c===c-1 && r.y2>y && (!best || r.y2<best.y)) best = {y:r.y2, to:c-1, ty:r.y1};
+    }
+    if(!best){ pts.push([c,g.ROWS+1]); return { end:c, pts }; }
+    pts.push([c,best.y],[best.to,best.ty]); c = best.to; y = best.ty;
+  }
+  return null;
+}
+const BUILD_MS = matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 900;
 const COLORS = ["#e2591b","#2f7ab8","#2f9a63","#9a4fc4","#c4932a","#d23d6b","#178a8f","#6d6ad8","#a7643a","#4d8a2a"];
 
 function drawLadder(){
@@ -355,14 +405,18 @@ function drawLadder(){
   const avail = Math.max(280, svg.parentElement.clientWidth);
   const colW = Math.max(56, Math.floor(avail / g.N));
   const W = colW*g.N, top=52, rowH=26, H = top + (g.ROWS+1)*rowH + 54;
-  const X = c => colW*c + colW/2, Y = r => r<0 ? top : top + (r+1)*rowH;
+  const X = c => colW*c + colW/2, Y = y => top + y*rowH;
   g.geo = {X,Y,top,rowH,H,colW};
   svg.setAttribute("viewBox",`0 0 ${W} ${H}`); svg.setAttribute("width",W); svg.setAttribute("height",H);
   const NS="http://www.w3.org/2000/svg"; svg.innerHTML="";
   const el=(t,a,p=svg)=>{ const e=document.createElementNS(NS,t); for(const k in a) e.setAttribute(k,a[k]); p.appendChild(e); return e; };
-  const bottom = Y(g.ROWS);
+  const bottom = Y(g.ROWS+1);
   for(let c=0;c<g.N;c++) el("line",{class:"rail",x1:X(c),y1:top,x2:X(c),y2:bottom});
-  g.rungs.forEach((s,r)=>s.forEach(c=>el("line",{class:"rung",x1:X(c),y1:Y(r),x2:X(c+1),y2:Y(r)})));
+  // rungs drop in one by one in random order while the ladder is being built
+  shuffle(g.rungs).forEach((r,k)=>{
+    const e = el("line",{class:"rung",x1:X(r.c),y1:Y(r.y1),x2:X(r.c+1),y2:Y(r.y2)});
+    e.style.animationDelay = Math.round(k*BUILD_MS/g.rungs.length)+"ms";
+  });
   g.traceLayer = el("g",{});
   g.players.forEach((name,i)=>{
     const grp = el("g",{tabindex:"0",role:"button","aria-label":name+" 사다리 타기"});
@@ -427,7 +481,7 @@ function animatePath(i, tempo){
   });
 }
 async function openSlot(c, name){
-  const g = game, s = g.slotEls[c], {X} = g.geo, y = g.geo.Y(g.ROWS)+24;
+  const g = game, s = g.slotEls[c], {X} = g.geo, y = g.geo.Y(g.ROWS+1)+24;
   const reveal = ()=>{ s.cov.classList.add("gone"); s.q.classList.add("gone"); s.t.classList.add("open"); };
   if(!g.slots[c]){ reveal(); buzz(15); return; }
   // a bomb drops onto the slot, the fuse burns down, then it goes off
@@ -601,7 +655,7 @@ function finish(){
     g.saved=true;
     state.history.unshift({ at:g.at.toISOString(), losers, n:g.N, memo:g.memo });
     state.history = state.history.slice(0,15);
-    save(); renderHistory();
+    save(); render();
   }
 }
 function renderHistory(){
@@ -623,6 +677,8 @@ function start(){
   $("ladder-panel").hidden=false; $("result").hidden=true; $("reveal-btn").disabled=false;
   drawLadder();
   $("ladder-panel").scrollIntoView({behavior:"smooth",block:"start"});
+  busy=true; $("ladder-hint").textContent = "사다리 놓는 중…";
+  setTimeout(()=>{ busy=false; $("ladder-hint").textContent = "이름을 누르면 한 명씩 내려갑니다"; }, BUILD_MS+300);
 }
 $("make-btn").addEventListener("click", start);
 $("reshuffle-btn").addEventListener("click", start);
